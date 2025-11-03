@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 
 import pandas as pd
 import streamlit as st
+import yfinance as yf # <-- MOVED yfinance import to the top
 
 # ------------------------------
 # App Config
@@ -22,12 +23,13 @@ with st.sidebar:
         "time": time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime()),
     })
     try:
-        import yfinance as _yf
-        st.write({"yfinance_version": getattr(_yf, "__version__", "unknown")})
+        # Check the version of the already-imported yf
+        st.write({"yfinance_version": getattr(yf, "__version__", "unknown")})
     except Exception as e:
-        st.warning(f"yfinance import error: {e}")
-st.title("📅 Earnings Date Fetcher — yfinance")
-st.caption("Upload an Excel file with a **Symbol** column. I'll fetch the next earnings date for each using yfinance.")
+        # This error is now less likely to cause a hang, as the import is global
+        st.warning(f"yfinance version check error: {e}")
+
+# Note: Removed the duplicate st.title and st.caption here.
 
 # ------------------------------
 # Helpers
@@ -37,7 +39,7 @@ def fetch_from_yf(symbol: str) -> dict:
     """Fetch next earnings date using yfinance, with multiple fallbacks.
     Returns a dict with fields: Symbol, NextEarningsDate, Source, Details, Error.
     """
-    import yfinance as yf
+    # yfinance is now globally imported, no need to import inside the function.
 
     result = {
         "Symbol": symbol,
@@ -143,7 +145,7 @@ def to_excel_download(df: pd.DataFrame) -> bytes:
 # ------------------------------
 # UI — File input & options
 # ------------------------------
-uploaded = st.file_uploader("Upload Excel (.xlsx) with a 'Symbol' column", type=["xlsx"]) 
+uploaded = st.file_uploader("Upload Excel (.xlsx) with a 'Symbol' column", type=["xlsx"])
 max_workers = st.slider("Concurrency (workers)", min_value=2, max_value=16, value=8, help="Parallel requests to yfinance")
 
 run = st.button("Fetch Earnings Dates", type="primary", disabled=uploaded is None)
