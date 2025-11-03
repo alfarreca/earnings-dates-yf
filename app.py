@@ -6,7 +6,8 @@ from datetime import datetime, timezone
 
 import pandas as pd
 import streamlit as st
-import yfinance as yf # <-- MOVED yfinance import to the top
+# Keep yfinance imported globally as it is a required library for the entire app.
+import yfinance as yf
 
 # ------------------------------
 # App Config
@@ -26,21 +27,18 @@ with st.sidebar:
         # Check the version of the already-imported yf
         st.write({"yfinance_version": getattr(yf, "__version__", "unknown")})
     except Exception as e:
-        # This error is now less likely to cause a hang, as the import is global
+        # This is less likely to cause a hang now.
         st.warning(f"yfinance version check error: {e}")
-
-# Note: Removed the duplicate st.title and st.caption here.
 
 # ------------------------------
 # Helpers
 # ------------------------------
+# NOTE: Caching the function is essential for performance on subsequent calls.
 @st.cache_data(ttl=60 * 30, show_spinner=False)
 def fetch_from_yf(symbol: str) -> dict:
     """Fetch next earnings date using yfinance, with multiple fallbacks.
     Returns a dict with fields: Symbol, NextEarningsDate, Source, Details, Error.
     """
-    # yfinance is now globally imported, no need to import inside the function.
-
     result = {
         "Symbol": symbol,
         "NextEarningsDate": None,
@@ -50,13 +48,17 @@ def fetch_from_yf(symbol: str) -> dict:
     }
 
     try:
+        # Instantiating the Ticker object is the first point of network contact.
         t = yf.Ticker(symbol)
+        
         # Try the modern endpoint first
         dt_candidates = []
         used = None
 
         # 1) get_earnings_dates (preferred in recent yfinance versions)
         try:
+            # We assume t.get_earnings_dates() might fail or hang in a strict cloud environment.
+            # If it fails, the execution falls through to the calendar method.
             df = t.get_earnings_dates(limit=12)
             if df is not None and isinstance(df, pd.DataFrame) and len(df) > 0:
                 # Some yfinance builds return DatetimeIndex; others put date in a column
@@ -76,8 +78,8 @@ def fetch_from_yf(symbol: str) -> dict:
                 dt_candidates.extend(dates)
                 used = "get_earnings_dates"
         except Exception as e:
-            # Fall through to next method
-            pass
+            # Fall through to next method, but capture the error detail
+            result["Details"] = f"get_earnings_dates failed: {str(e)[:50]}"
 
         # 2) legacy calendar (older yfinance). Often returns a 1-row DF with column 'Earnings Date'
         if not dt_candidates:
@@ -104,7 +106,10 @@ def fetch_from_yf(symbol: str) -> dict:
                         dates = pd.to_datetime(cal["Earnings Date"], errors="coerce").dropna().tolist()
                         dt_candidates = dates
                         used = "calendar:column"
-            except Exception:
+            except Exception as e:
+                # Capture failure reason if both endpoints fail
+                if not result.get("Details"):
+                     result["Details"] = f"calendar failed: {str(e)[:50]}"
                 pass
 
         # Normalize & choose the *next* earnings date (>= today UTC). If none in future, choose the most recent.
@@ -126,13 +131,16 @@ def fetch_from_yf(symbol: str) -> dict:
         if next_dt is not None:
             result["NextEarningsDate"] = next_dt.isoformat()
             result["Source"] = used or "yfinance"
-            result["Details"] = f"candidates={len(clean)}"
+            # Keep original details or append to them
+            result["Details"] = f"candidates={len(clean)}" + (f"; {result['Details']}" if result.get("Details") else "")
         else:
-            result["Error"] = "No date found via yfinance endpoints"
+            result["Error"] = result.get("Details") or "No date found via yfinance endpoints"
+            result["Details"] = None # Clear details if it's the main error
 
     except Exception as e:
-        result["Error"] = str(e)
-
+        # Catch any failure during the Ticker initialization or other unknown error
+        result["Error"] = f"TICKER INIT/UNKNOWN ERROR: {str(e)}"
+        
     return result
 
 
