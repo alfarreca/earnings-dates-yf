@@ -14,6 +14,21 @@ st.set_page_config(page_title="Earnings Date Fetcher (yfinance)", layout="wide")
 st.title("📅 Earnings Date Fetcher — yfinance")
 st.caption("Upload an Excel file with a **Symbol** column. I'll fetch the next earnings date for each using yfinance.")
 
+# Debug panel (helps diagnose Streamlit Cloud issues)
+with st.sidebar:
+    st.subheader("⚙️ Runtime Info")
+    st.write({
+        "python": sys.version,
+        "time": time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime()),
+    })
+    try:
+        import yfinance as _yf
+        st.write({"yfinance_version": getattr(_yf, "__version__", "unknown")})
+    except Exception as e:
+        st.warning(f"yfinance import error: {e}")
+st.title("📅 Earnings Date Fetcher — yfinance")
+st.caption("Upload an Excel file with a **Symbol** column. I'll fetch the next earnings date for each using yfinance.")
+
 # ------------------------------
 # Helpers
 # ------------------------------
